@@ -1,0 +1,38 @@
+name: release
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Trusted publishing requires `id-token: write`; no token is stored in the repo.
+# See https://docs.pypi.org/trusted-publishers/
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/repomap/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+
+      - name: The tag matches the pyproject version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PYVER="$(grep -E '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')"
+          if [ "$TAG" != "$PYVER" ]; then
+            echo "::error::tag $TAG does not match pyproject version $PYVER"
+            exit 1
+          fi
+
+      - run: uv sync --locked
+      - run: make check
+      - run: uv build
+      - name: Publish to PyPI (trusted publishing via uv)
+        run: uv publish --trusted-publishing always
