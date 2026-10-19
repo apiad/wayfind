@@ -12,8 +12,9 @@ The rules, with their reasons:
   them; any other language falls back to nodes whose type reads like a
   definition (parse.py).
 - **Every edge says how it was found.** An edge is *sure* when the name is
-  defined in the same file, or when the using file's imports name both the
-  target's module and the name. Anything else is a name match, printed with
+  defined in the same file, when the using file's imports name both the
+  target's module and the name, or when the receiver's type is stated
+  (index.py says where from). Anything else is a name match, printed with
   ``?``. Measured against jedi on aegis itself, sure edges were right 96% of
   the time and both kinds together found 97% of real references; the ``?``
   edges were mostly common method names, so ``impact`` expands through sure
@@ -23,6 +24,9 @@ The rules, with their reasons:
   whose mtime or size changed, so a warm query costs a stat per file. The file
   is replaced atomically, so two sessions writing it at once lose a refresh,
   never the index.
+- **Numbers, not verdicts.** metrics, cycles, unused and diff report per
+  definition, file and folder, with ``--json``; thresholds belong to whoever
+  reads them (measures.py).
 - **A CLI, not MCP tools.** Every MCP tool's schema rides on every request of
   every session; a subcommand costs nothing until an agent runs it.
 """

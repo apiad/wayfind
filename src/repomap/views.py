@@ -11,7 +11,7 @@ from collections import Counter, defaultdict
 from .index import Index
 from .parse import Def
 
-UNSURE = "? = matched by name only, not confirmed by an import"
+UNSURE = "? = not sure: matched by name only, or a receiver that may hold more than one class"
 _KINDS = ("class", "interface", "type", "module", "function", "method")
 
 
@@ -136,25 +136,145 @@ def callers(ix: Index, symbol: str, depth: int, calls_only: bool = True) -> str:
 
 
 def callees(ix: Index, symbol: str) -> str:
+    """Each call once per line and target set. A call through a base or
+    protocol method lists the overrides it may reach after the first."""
     out = []
     unsure = False
     for d in ix.symbol(symbol):
         out.append(f"# callees of {d.id}")
         seen = set()
-        for line, cands, sure in ix.callees(d):
+        for line, cands, sure, how in ix.callees(d):
             key = tuple(c.id for c in cands)
             if key in seen:
                 continue
             seen.add(key)
             unsure |= not sure
-            more = (
-                f" ? ({len(cands)} candidates)"
-                if len(cands) > 1
-                else ""
-                if sure
-                else " ?"
-            )
+            if how == "typed" and len(cands) > 1:
+                more = f" (+ {', '.join(c.id for c in cands[1:])})" + (
+                    "" if sure else " ?"
+                )
+            elif len(cands) > 1:
+                more = f" ? ({len(cands)} candidates)"
+            else:
+                more = "" if sure else " ?"
             out.append(f"{line}: {cands[0].id}{more}")
     if unsure:
         out.append(UNSURE)
     return "\n".join(out) or f"{symbol}: not found"
+
+
+def _pct(n: int, total: int) -> str:
+    return f"{n} of {total}" + (f" ({100 * n // total}%)" if total else "")
+
+
+def metrics(data: dict, sort: str, top: int) -> str:
+    fs, files = data["functions"], data["files"]
+    if not files:
+        return f"nothing indexed under {data['path'] or 'the repository'}"
+    lines = sorted(f["lines"] for f in fs) or [0]
+    params = sum(f["params"] for f in fs)
+    out = [
+        f"# metrics of {data['path'] or 'the repository'}: {len(files)} files, "
+        f"{sum(f['lines'] for f in files)} lines, {len(fs)} functions, "
+        f"{len(data['classes'])} classes",
+        f"function lines: median {lines[len(lines) // 2]}, p90 {lines[len(lines) * 9 // 10]}, "
+        f"max {lines[-1]}; complexity max {max((f['complexity'] for f in fs), default=0)}",
+        f"doc: {_pct(sum(f['doc'] for f in fs), len(fs))} functions, "
+        f"{_pct(sum(f['doc'] for f in files), len(files))} files",
+        f"typing: {_pct(sum(f['typed'] for f in fs), params)} parameters, "
+        f"{_pct(sum(f['returns'] for f in fs), len(fs))} returns; "
+        f"{sum(f['anys'] for f in fs)} any; "
+        f"{sum(f['unresolved'] for f in fs)} calls on a receiver of unknown type",
+        f"## functions by {sort}",
+    ]
+    key = sort.replace("-", "_")
+    for f in sorted(fs, key=lambda f: (-f[key], f["id"]))[:top]:
+        out.append(
+            f"{f[key]:>6}  {f['id']}:{f['line']}  "
+            f"lines {f['lines']}, cx {f['complexity']}, in {f['fan_in']}, out {f['fan_out']}"
+        )
+    out.append("## files by lines")
+    for f in sorted(files, key=lambda f: (-f["lines"], f["file"]))[:top]:
+        out.append(f"{f['lines']:>6}  {f['file']}  {f['functions']} functions")
+    out.append("## folders by fan-in (folders that use them)")
+    for p in data["packages"][:top]:
+        out.append(
+            f"{p['fan_in']:>6}  {p['package']}/  out {p['fan_out']}, {p['files']} files, {p['lines']} lines"
+        )
+    out.append(
+        "--json gives every row; every number is per definition, file or folder, with no thresholds"
+    )
+    return "\n".join(out)
+
+
+def cycles(data: dict) -> str:
+    cs = data["cycles"]
+    if not cs:
+        return f"no cycles between {data['level']}s under {data['path'] or 'the repository'}"
+    out = [f"# {len(cs)} cycles of uses between {data['level']}s"]
+    for c in cs:
+        out.append(f"{c['size']} {data['level']}s: {' → '.join(c['example'])}")
+        if c["size"] > len(c["example"]) - 1:
+            out.append(f"  all: {', '.join(c['nodes'])}")
+    return "\n".join(out)
+
+
+def unused(data: dict) -> str:
+    out = [
+        f"# {len(data['unused'])} definitions nothing names (by name, so a string use is missed)"
+    ]
+    out += [
+        f"{r['id']}:{r['line']}  {r['kind']}, {r['lines']} lines"
+        for r in data["unused"]
+    ]
+    out.append(f"# {len(data['tests_only'])} named only by tests")
+    out += [f"{r['id']}:{r['line']}  {r['kind']}" for r in data["tests_only"]]
+    return "\n".join(out)
+
+
+def _arrow(pair: list) -> str:
+    a, b = pair
+    return (
+        str(b)
+        if a is None
+        else str(a)
+        if b is None
+        else str(a)
+        if a == b
+        else f"{a}→{b}"
+    )
+
+
+def diff(data: dict) -> str:
+    out = [f"# changes since {data['base'][:12]}: {len(data['files'])} files"]
+    for f in data["files"]:
+        out.append(
+            f"{f['file']}  lines {_arrow([f['lines_before'], f['lines_after']])}"
+        )
+    for r in data["definitions"]:
+        out.append(
+            f"{r['status']:<8} {r['id']}  lines {_arrow(r['lines'])}"
+            + (
+                f", cx {_arrow(r['complexity'])}"
+                if r["kind"] in ("function", "method")
+                else ""
+            )
+        )
+        if r.get("callers") or r.get("callers_by_name"):
+            more = r["callers_total"] - len(r["callers"])
+            out.append(
+                f"    used by: {', '.join(r['callers']) or 'nothing sure'}"
+                + (f" +{more}" if more > 0 else "")
+                + (
+                    f"; {r['callers_by_name']} more by name only (?)"
+                    if r["callers_by_name"]
+                    else ""
+                )
+            )
+        if r.get("still_named"):
+            more = r["still_named_total"] - len(r["still_named"])
+            out.append(
+                f"    still named at: {', '.join(r['still_named'])}"
+                + (f" +{more}" if more > 0 else "")
+            )
+    return "\n".join(out)

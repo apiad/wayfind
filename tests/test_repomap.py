@@ -1,5 +1,6 @@
 """``aegis map`` on a small git repository built per test, through the CLI."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -140,3 +141,243 @@ def test_outside_a_git_repository_it_says_so(tmp_path):
     r = CliRunner().invoke(app, ["map", "repo", "--repo", str(tmp_path)])
     assert r.exit_code == 1
     assert "not inside a git repository" in r.output
+
+
+# Receivers with a stated type: the shape that #491 found wrong in aegis itself,
+# a registry whose subsystems are assigned from outside, a protocol host and a
+# test call through untyped fixtures.
+TYPED = {
+    "app/host.py": """class Host:
+    def turn_ended(self, s) -> None: ...
+
+
+class Session:
+    def __init__(self, host: Host):
+        self._host = host
+
+    def finish(self):
+        self._host.turn_ended(self)
+""",
+    "app/queues.py": """class Queues:
+    def turn_ended(self, s):
+        return s
+""",
+    "app/quota.py": """class Quota:
+    def turn_ended(self):
+        return 1
+""",
+    "app/registry.py": """from .host import Host
+
+
+class Registry(Host):
+    def __init__(self):
+        self.queues = None
+        self.quota = None
+
+    def turn_ended(self, s):
+        self.queues.turn_ended(s)
+        self.quota.turn_ended()
+""",
+    "app/main.py": """from .queues import Queues
+from .quota import Quota
+from .registry import Registry as Sessions
+
+
+def find(x):
+    return x
+
+
+class App:
+    def __init__(self):
+        self.sessions = Sessions()
+        self.queues = Queues()
+        reg = self.sessions
+        reg.quota = Quota()
+""",
+    "app/text.py": """import json
+
+
+def load(raw):
+    data = raw.find("x")
+    return json.loads(data)
+""",
+    "tests/test_flow.py": """def test_a_turn(world):
+    world.app.sessions.turn_ended(1)
+""",
+    "web/svc.ts": """import { Store as Db } from "./store";
+
+export class Svc {
+  private db: Db;
+  constructor() { this.db = new Db(); }
+  run(): void { this.db.put("a"); }
+}
+""",
+    "web/store.ts": """export class Store {
+  put(k: string): void {}
+}
+""",
+}
+
+
+@pytest.fixture
+def typed(tmp_path, monkeypatch):
+    root = tmp_path / "typed"
+    for rel, text in TYPED.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+    monkeypatch.setattr("aegis.codemap.cli.cache_dir", lambda: tmp_path / "cache")
+    return root
+
+
+def test_callees_follow_the_type_of_each_receiver(typed):
+    out = run(typed, "callees", "Registry.turn_ended")
+    # self.queues is None in its class; App assigns a Queues to an attribute of
+    # that name, and reg.quota is assigned through a Registry-typed receiver
+    assert "10: app/queues.py:Queues.turn_ended\n" in out
+    assert "11: app/quota.py:Quota.turn_ended\n" in out
+    assert "Registry.turn_ended\n" not in out.split("\n", 1)[1]
+
+
+def test_a_call_through_a_base_reaches_the_override(typed):
+    out = run(typed, "callers", "Registry.turn_ended")
+    assert "L1 app/host.py: Session.finish:10\n" in out
+    # world.app is typed nowhere in the test, but every `.app` names an App
+    assert "L1 tests/test_flow.py: test_a_turn:2\n" in out
+    assert "?" not in out
+
+
+def test_a_name_on_an_unknown_receiver_is_no_module_function(typed):
+    # raw.find() is a member call: it cannot be main.py's top-level find
+    assert "text.py" not in run(typed, "callers", "app/main.py:find")
+
+
+def test_an_aliased_import_resolves_to_its_class(typed):
+    assert "L1 app/main.py: App.__init__:12" in run(typed, "callers", "Registry")
+
+
+def test_typescript_resolves_a_field_through_new(typed):
+    assert "web/store.ts:Store.put\n" in run(typed, "callees", "Svc.run")
+
+
+def test_exclude_keeps_files_out_of_views_and_in_the_cache(typed, tmp_path):
+    run(typed, "repo")
+    out = run(typed, "repo", "--exclude", "tests", "-x", "web/*.ts")
+    assert "tests/" not in out and "web/" not in out
+    ix = Index(typed, tmp_path / "cache")  # every file again: none re-parsed
+    assert ix.stats.parsed == 0 and "tests/test_flow.py" in ix.files
+
+
+def test_a_cold_index_in_a_pool_matches_one_in_process(typed, tmp_path, monkeypatch):
+    serial = Index(typed, tmp_path / "a")
+    monkeypatch.setattr("aegis.codemap.index.POOL_MIN", 1)
+    pooled = Index(typed, tmp_path / "b")
+    assert pooled.stats.parsed == serial.stats.parsed == len(TYPED)
+    assert {k: v[1].refs for k, v in pooled.files.items()} == {
+        k: v[1].refs for k, v in serial.files.items()
+    }
+
+
+METRICS = {
+    "m.py": '''def branchy(a: int, b, *rest) -> int:
+    """Doc."""
+    if a:
+        pass
+    elif b:
+        pass
+    for x in rest:
+        while x:
+            break
+    try:
+        pass
+    except ValueError:
+        pass
+    except KeyError:
+        pass
+    else:
+        pass
+
+    def inner():
+        return a and b
+
+    return 1
+
+
+def plain(self):
+    return [x for x in range(3) if x]
+
+
+class C:
+    def m(self, k: "C | None" = None):
+        return k
+''',
+    "a.py": "from b import g\n\n\ndef f():\n    return g()\n",
+    "b.py": "from a import f\n\n\ndef g():\n    return f()\n\n\ndef dead():\n    return 0\n\n\ndef probe():\n    return 1\n",
+    "tests/test_b.py": "from b import probe\n\n\ndef test_probe():\n    assert probe()\n",
+}
+
+
+@pytest.fixture
+def small(tmp_path, monkeypatch):
+    root = tmp_path / "small"
+    for rel, text in METRICS.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+    monkeypatch.setattr("aegis.codemap.cli.cache_dir", lambda: tmp_path / "cache")
+    return root
+
+
+def test_metrics_counts_as_ruff_c901_does(small):
+    data = json.loads(run(small, "metrics", "--json"))
+    fs = {f["name"]: f for f in data["functions"]}
+    # if, elif, for, while, two excepts, a try's else and the nested def;
+    # not the `and`, not the comprehension
+    assert fs["branchy"]["complexity"] == 9
+    assert fs["inner"]["complexity"] == 1
+    assert fs["plain"]["complexity"] == 1
+    assert (fs["branchy"]["lines"], fs["branchy"]["doc"]) == (22, True)
+    assert (
+        fs["branchy"]["params"],
+        fs["branchy"]["typed"],
+        fs["branchy"]["returns"],
+    ) == (3, 1, True)
+    assert (fs["m"]["params"], fs["m"]["typed"]) == (1, 1)
+    assert fs["g"]["fan_in"] == 1 and fs["f"]["fan_out"] == 1
+    files = {f["file"]: f for f in data["files"]}
+    assert files["m.py"]["lines"] == 31 and files["m.py"]["lang"] == "python"
+
+
+def test_cycles_find_files_that_use_each_other(small):
+    out = run(small, "cycles")
+    assert "2 files: a.py → b.py → a.py" in out
+
+
+def test_unused_lists_dead_code_and_test_only_code(small):
+    data = json.loads(run(small, "unused", "--json"))
+    dead = {r["id"] for r in data["unused"]}
+    assert "b.py:dead" in dead and "b.py:g" not in dead
+    assert [r["id"] for r in data["tests_only"]] == ["b.py:probe"]
+
+
+def test_diff_reports_each_definition_with_its_users(small):
+    git = ["git", "-C", str(small), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git, "commit", "-qm", "base"], check=True)
+    (small / "b.py").write_text(
+        "from a import f\n\n\ndef g():\n    if f():\n        return f()\n\n\n"
+        "def probe():\n    return 1\n\n\ndef fresh():\n    return 2\n"
+    )
+    (small / "a.py").write_text(
+        "from b import g\n\n\ndef f():\n    return g() + dead()\n"
+    )
+    data = json.loads(run(small, "diff", "HEAD", "--json"))
+    rows = {r["id"]: r for r in data["definitions"]}
+    assert rows["b.py:dead"]["status"] == "removed"
+    assert rows["b.py:dead"]["still_named"] == []  # a.py:f is in the diff itself
+    assert rows["b.py:g"]["status"] == "modified"
+    assert rows["b.py:g"]["complexity"] == [1, 2]
+    assert rows["b.py:fresh"]["status"] == "added"
+    assert "b.py:probe" not in rows
+    assert data["definitions"][0]["id"] == "b.py:dead"  # removals first
