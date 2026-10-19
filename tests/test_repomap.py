@@ -1,4 +1,4 @@
-"""``aegis map`` on a small git repository built per test, through the CLI."""
+"""repomap on a small git repository built per test, through the CLI."""
 
 import json
 import os
@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from aegis.cli import app
-from aegis.codemap.index import Index
+from repomap.cli import app
+from repomap.index import Index
 
 FILES = {
     "pkg/__init__.py": '"""The package."""\n',
@@ -72,12 +72,12 @@ def repo(tmp_path, monkeypatch):
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "add", "."], check=True)
     # The map's cache only: the grammars stay in the user's cache, downloaded once.
-    monkeypatch.setattr("aegis.codemap.cli.cache_dir", lambda: tmp_path / "cache")
+    monkeypatch.setattr("repomap.cli.cache_dir", lambda: tmp_path / "cache")
     return root
 
 
 def run(repo: Path, *args: str) -> str:
-    r = CliRunner().invoke(app, ["map", *args, "--repo", str(repo)])
+    r = CliRunner().invoke(app, [*args, "--repo", str(repo)])
     assert r.exit_code == 0, r.output
     return r.stdout
 
@@ -138,7 +138,7 @@ def test_an_edited_file_is_reparsed_and_the_rest_is_not(repo, tmp_path):
 
 
 def test_outside_a_git_repository_it_says_so(tmp_path):
-    r = CliRunner().invoke(app, ["map", "repo", "--repo", str(tmp_path)])
+    r = CliRunner().invoke(app, ["repo", "--repo", str(tmp_path)])
     assert r.exit_code == 1
     assert "not inside a git repository" in r.output
 
@@ -227,7 +227,7 @@ def typed(tmp_path, monkeypatch):
         (root / rel).write_text(text)
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "add", "."], check=True)
-    monkeypatch.setattr("aegis.codemap.cli.cache_dir", lambda: tmp_path / "cache")
+    monkeypatch.setattr("repomap.cli.cache_dir", lambda: tmp_path / "cache")
     return root
 
 
@@ -271,7 +271,7 @@ def test_exclude_keeps_files_out_of_views_and_in_the_cache(typed, tmp_path):
 
 def test_a_cold_index_in_a_pool_matches_one_in_process(typed, tmp_path, monkeypatch):
     serial = Index(typed, tmp_path / "a")
-    monkeypatch.setattr("aegis.codemap.index.POOL_MIN", 1)
+    monkeypatch.setattr("repomap.index.POOL_MIN", 1)
     pooled = Index(typed, tmp_path / "b")
     assert pooled.stats.parsed == serial.stats.parsed == len(TYPED)
     assert {k: v[1].refs for k, v in pooled.files.items()} == {
@@ -326,7 +326,7 @@ def small(tmp_path, monkeypatch):
         (root / rel).write_text(text)
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "add", "."], check=True)
-    monkeypatch.setattr("aegis.codemap.cli.cache_dir", lambda: tmp_path / "cache")
+    monkeypatch.setattr("repomap.cli.cache_dir", lambda: tmp_path / "cache")
     return root
 
 

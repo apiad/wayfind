@@ -1,4 +1,4 @@
-"""The views ``aegis map`` prints, each a plain-text block sized for an agent's context.
+"""The views repomap prints, each a plain-text block sized for an agent's context.
 
 Paths are relative to the repository root. A line ending in ``?`` is an edge
 found by name only; every other edge is sure (see the package docstring).

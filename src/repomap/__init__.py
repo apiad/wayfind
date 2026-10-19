@@ -1,4 +1,4 @@
-"""``aegis map``: a tree-sitter map of a git repository, for agents.
+"""repomap: a tree-sitter map of a git repository, for agents.
 
 It answers what grep cannot say it answered completely: the repository's
 layout with each module's first doc line, a file's outline, and every caller
@@ -15,7 +15,7 @@ The rules, with their reasons:
   defined in the same file, when the using file's imports name both the
   target's module and the name, or when the receiver's type is stated
   (index.py says where from). Anything else is a name match, printed with
-  ``?``. Measured against jedi on aegis itself, sure edges were right 96% of
+  ``?``. Measured against jedi on aegis, where this map began, sure edges were right 96% of
   the time and both kinds together found 97% of real references; the ``?``
   edges were mostly common method names, so ``impact`` expands through sure
   edges only (index.py).

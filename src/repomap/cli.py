@@ -1,4 +1,4 @@
-"""``aegis map``: the views of the code map, one subcommand each.
+"""repomap: the views of the code map, one subcommand each.
 
 Each command indexes the git repository holding ``--repo`` (by default the
 shell's directory), refreshing what changed, then prints one view. It needs no
@@ -32,19 +32,14 @@ _EXCLUDE = typer.Option(
 
 def cache_dir() -> Path:
     """Shared by every session of this user, so one index serves them all."""
-    return (
-        Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
-        / "aegis"
-        / "map"
-    )
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "repomap"
 
 
 def _index(repo: Path | None, exclude: list[str] | None = None):
-    from ..cli import path_here
     from .index import Index, repo_root
 
     try:
-        root = repo_root(Path(path_here(str(repo or "."))))
+        root = repo_root(Path.cwd() / Path(repo or ".").expanduser())
     except ValueError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(1) from e
