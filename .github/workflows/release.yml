@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/repomap/
+      url: https://pypi.org/project/wayfind/
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

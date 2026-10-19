@@ -1,4 +1,4 @@
-"""repomap: a tree-sitter map of a git repository, for agents.
+"""wayfind: a tree-sitter map of a git repository, for agents.
 
 It answers what grep cannot say it answered completely: the repository's
 layout with each module's first doc line, a file's outline, and every caller

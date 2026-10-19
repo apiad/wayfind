@@ -1,19 +1,19 @@
-# Design — repomap
+# Design — wayfind
 
 The rules and their reasons are in the package docstring
-(`src/repomap/__init__.py`); this file says how the modules divide the work.
+(`src/wayfind/__init__.py`); this file says how the modules divide the work.
 
 ```
-src/repomap/parse.py     one source file into definitions, references, facts and imports
-src/repomap/specs.py     per-language query patterns: receiver types, bases, branches
-src/repomap/index.py     the shared, mtime-refreshed index and name resolution
-src/repomap/measures.py  metrics, cycles, unused and diff over the index
-src/repomap/views.py     the plain-text views
-src/repomap/cli.py       one typer subcommand per view; `app` is what aegis mounts
+src/wayfind/parse.py     one source file into definitions, references, facts and imports
+src/wayfind/specs.py     per-language query patterns: receiver types, bases, branches
+src/wayfind/index.py     the shared, mtime-refreshed index and name resolution
+src/wayfind/measures.py  metrics, cycles, unused and diff over the index
+src/wayfind/views.py     the plain-text views
+src/wayfind/cli.py       one typer subcommand per view; `app` is what aegis mounts
 ```
 
 The index is one pickle per repository under the user's cache directory
-(`$XDG_CACHE_HOME/repomap`), refreshed by mtime and size and replaced
+(`$XDG_CACHE_HOME/wayfind`), refreshed by mtime and size and replaced
 atomically, so every process of the user shares it. A cold index parses in a
 pool of processes.
 

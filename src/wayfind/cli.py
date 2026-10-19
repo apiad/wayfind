@@ -1,4 +1,4 @@
-"""repomap: the views of the code map, one subcommand each.
+"""wayfind: the views of the code map, one subcommand each.
 
 Each command indexes the git repository holding ``--repo`` (by default the
 shell's directory), refreshing what changed, then prints one view. It needs no
@@ -32,7 +32,7 @@ _EXCLUDE = typer.Option(
 
 def cache_dir() -> Path:
     """Shared by every session of this user, so one index serves them all."""
-    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "repomap"
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "wayfind"
 
 
 def _index(repo: Path | None, exclude: list[str] | None = None):

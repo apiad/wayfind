@@ -1,5 +1,5 @@
 [project]
-name = "repomap"
+name = "wayfind"
 version = "0.1.0"
 description = "A tree-sitter map of a git repository: layout, outlines, callers, impact and numbers, for agents and CI"
 readme = "README.md"
@@ -12,10 +12,10 @@ dependencies = [
 ]
 
 [project.scripts]
-repomap = "repomap.cli:app"
+wayfind = "wayfind.cli:app"
 
 [project.urls]
-Repository = "https://github.com/apiad/repomap"
+Repository = "https://github.com/apiad/wayfind"
 
 [build-system]
 requires = ["hatchling"]

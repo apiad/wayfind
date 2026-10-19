@@ -1,4 +1,4 @@
-# repomap
+# wayfind
 
 A tree-sitter map of a git repository, for agents and for CI. It started as
 `aegis map` in [aegis](https://github.com/apiad/aegis), which now uses it as a
@@ -7,10 +7,10 @@ library and mounts the same commands under that name.
 ## Install
 
 ```bash
-uv tool install repomap        # or: uvx repomap repo
+uv tool install wayfind        # or: uvx wayfind repo
 ```
 
-`repomap` reads a git repository with tree-sitter and answers what grep
+`wayfind` reads a git repository with tree-sitter and answers what grep
 cannot say it answered completely: the repository's layout with each module's
 first doc line, a file's outline, every caller of a definition, and everything
 that depends on it. It runs in the shell, needs no server and works in any
@@ -19,15 +19,15 @@ Go, Rust, Java and C.
 
 ## Start with the layout
 
-Run `repomap repo` in the repository for its top folders, with how many
+Run `wayfind repo` in the repository for its top folders, with how many
 classes, functions and methods each holds. Give a folder and `--depth 2` to
 open it further: each file then shows its first doc line, which is often
-enough to know where to look. `repomap outline <path>` lists a file's or a
+enough to know where to look. `wayfind outline <path>` lists a file's or a
 folder's definitions with their line, signature and first doc line, and
-`repomap deps <path>` says which files use which.
+`wayfind deps <path>` says which files use which.
 
 Read a whole file only once the map has said it is the one you need.
-`repomap show <symbol>` prints one definition's source without the rest of
+`wayfind show <symbol>` prints one definition's source without the rest of
 its file.
 
 ## Name a definition
@@ -35,15 +35,15 @@ its file.
 Every command that takes a symbol accepts a bare name (`save`), a class and
 method (`Store.put`), or a path and a name (`pkg/store.py:helper`), where the
 path may be any ending of the file's path. A name defined in several places
-answers for each; `repomap find <name>` lists them.
+answers for each; `wayfind find <name>` lists them.
 
 ## Callers and impact
 
-`repomap callers <symbol>` lists every call of a definition, grouped by
+`wayfind callers <symbol>` lists every call of a definition, grouped by
 file, as the enclosing definition and its line. `--depth 2` also lists the
-callers of those callers, indented. `repomap impact <symbol>` counts every
+callers of those callers, indented. `wayfind impact <symbol>` counts every
 use, not only calls, and follows three levels by default: what you would have
-to check if you changed it, or what would break. `repomap callees <symbol>` goes the other way.
+to check if you changed it, or what would break. `wayfind callees <symbol>` goes the other way.
 
 A call on a receiver, such as `self.queues.turn_ended()`, resolves through the
 receiver's type wherever the source states one: a parameter or variable
@@ -66,7 +66,7 @@ edges only.
 
 The receiver types work in Python, JavaScript and TypeScript. Other languages
 get the rest of the map with calls matched by name; another language is
-one more `Spec` in `src/repomap/specs.py` (its docstring says how).
+one more `Spec` in `src/wayfind/specs.py` (its docstring says how).
 
 ## Numbers for a review
 
@@ -74,22 +74,22 @@ Four views give numbers and no verdicts. Which numbers matter, and where a
 line falls, is yours to decide: each takes `--json`, and a gate or a review is
 a filter over it.
 
-- `repomap metrics [path]` has one row per definition, file and
+- `wayfind metrics [path]` has one row per definition, file and
   folder: lines, complexity (counted as ruff's C901 counts it for Python, and
   as decision points for other languages), whether it has a doc, parameters
   with a type out of all, a stated return type, uses of `Any`, calls on a
   receiver of unknown type (the missing types that cost navigation), and
   fan-in and fan-out. Folders carry which folders they use. The text view
   ranks the top rows; `--sort complexity` or `fan-in` and `--top` change it.
-- `repomap cycles [path]` lists the files, or with `--level package` the
+- `wayfind cycles [path]` lists the files, or with `--level package` the
   folders, that use each other in a cycle, with one cycle spelled out. In
   Python a use in an annotation counts.
-- `repomap unused [path]` lists definitions no reference names outside
+- `wayfind unused [path]` lists definitions no reference names outside
   their own body, and those only tests name. It goes by name, so a function
   reached through a string (a `getattr` dispatch, a route table, HTML) is
   listed; dunders, decorated registrations, overrides, handlers assigned to
   `on…` properties and members of object literals are left out.
-- `repomap diff [base]` reads a branch: every definition the branch touched
+- `wayfind diff [base]` reads a branch: every definition the branch touched
   since `base` (by default the merge-base with `origin/main`, uncommitted work
   included), whether it was added, removed, moved or modified, its lines and
   complexity before and after, the sure users outside the branch, and for a
@@ -98,8 +98,8 @@ a filter over it.
 For example, the definitions over 50 lines and those ruff's C901 would flag:
 
 ```bash
-repomap metrics src --json | jq '[.functions[] | select(.lines > 50)] | length'
-repomap metrics src --json | jq -r '.functions[] | select(.complexity > 10) | .id'
+wayfind metrics src --json | jq '[.functions[] | select(.lines > 50)] | length'
+wayfind metrics src --json | jq -r '.functions[] | select(.complexity > 10) | .id'
 ```
 
 ## The index
