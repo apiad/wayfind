@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.1
 
 - A grammar download that stalls no longer hangs every command. Grammars a
   run needs are fetched first, in a child process killed after 120 s; stderr
