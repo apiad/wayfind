@@ -47,6 +47,8 @@ def _index(repo: Path | None, exclude: list[str] | None = None):
     s = ix.stats
     if s.parsed:
         typer.echo(f"[indexed {s.parsed} of {s.files} files in {s.seconds}s]", err=True)
+    if s.grammar_error:
+        typer.echo(f"[{s.grammar_error}]", err=True)
     if s.failed:
         langs = ", ".join(f"{n} {lang}" for lang, n in s.failed.most_common())
         typer.echo(f"[skipped files with no grammar: {langs}]", err=True)

@@ -115,9 +115,10 @@ files whose modification time or size changed, so a query costs about a
 second. The index lives in the user's cache directory, one file per
 repository, and every session of the same user shares it.
 
-Each grammar downloads the first time the map meets its language. On a host
-without internet those files are skipped, and stderr names how many of which
-language.
+Each grammar downloads the first time the map meets its language, before any
+file is parsed, and stderr says which. A download that fails, or does not
+finish in 120 s, skips those files: stderr names the grammars, why, and how
+many files of each language, and the next run tries again.
 
 ## Development
 

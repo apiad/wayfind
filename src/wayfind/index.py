@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
 
-from .parse import EXT, FAMILY, IMPLICIT_THIS, Def, FileInfo, Ref, parse_file
+from .parse import EXT, FAMILY, IMPLICIT_THIS, Def, FileInfo, Ref, fetch, parse_file
 from .specs import SPECS
 
 # Bump when Def, Ref or FileInfo change shape: an old cache is then ignored.
@@ -64,6 +64,7 @@ class Stats:
     parsed: int = 0
     seconds: float = 0.0
     failed: Counter = field(default_factory=Counter)  # language -> files skipped
+    grammar_error: str = ""  # why a grammar could not be had (parse.fetch)
 
 
 def repo_root(start: Path) -> Path:
@@ -156,6 +157,14 @@ class Index:
             if st.st_size > MAX_BYTES:
                 continue
             todo.append((rel, lang, stamp))
+        # Every grammar first, bounded (parse.fetch): a file whose grammar
+        # could not be had is skipped as one with no grammar, and tried again
+        # on the next run, since only parsed files are cached.
+        missing, self.stats.grammar_error = fetch({lang for _, lang, _ in todo})
+        for _, lang, _ in todo:
+            if lang in missing:
+                self.stats.failed[lang] += 1
+        todo = [t for t in todo if t[1] not in missing]
         for (rel, lang, stamp), (_, info) in zip(todo, self._parse(todo), strict=True):
             if info is None:
                 self.stats.failed[lang] += 1

@@ -381,3 +381,34 @@ def test_diff_reports_each_definition_with_its_users(small):
     assert rows["b.py:fresh"]["status"] == "added"
     assert "b.py:probe" not in rows
     assert data["definitions"][0]["id"] == "b.py:dead"  # removals first
+
+
+def test_a_stalled_grammar_download_ends_in_time_and_names_the_grammar(
+    repo, monkeypatch
+):
+    """syalia-srl/aegis#618: the pack's first download stalled on the network
+    with no timeout, under a lock every worker waited on, and the command never
+    ended. It is fetched first in a child killed after FETCH_S; the files of a
+    grammar not had are skipped and the next run tries again."""
+    import time
+
+    import tree_sitter_language_pack as pack
+
+    from wayfind import parse
+
+    monkeypatch.setattr(pack, "downloaded_languages", lambda: [])
+    monkeypatch.setattr(parse, "_FETCH", "import time; time.sleep(60)")
+    monkeypatch.setattr(parse, "FETCH_S", 1.0)
+    t0 = time.monotonic()
+    r = CliRunner().invoke(app, ["repo", "--repo", str(repo)])
+    assert time.monotonic() - t0 < 15
+    assert r.exit_code == 0, r.output
+    assert "[downloading tree-sitter grammars: python, typescript]" in r.stderr
+    assert (
+        "[no tree-sitter grammar for python, typescript: the download did not finish in 1 s]"
+        in r.stderr
+    )
+    assert "[skipped files with no grammar: 4 python, 2 typescript]" in r.stderr
+    monkeypatch.undo()
+    monkeypatch.setattr("wayfind.cli.cache_dir", lambda: repo.parent / "cache")
+    assert "store.py" in run(repo, "repo", "pkg"), "the next run parses them"

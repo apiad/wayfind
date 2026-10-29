@@ -5,16 +5,65 @@ doc line. A reference is every identifier that is not a definition's name or a
 binding (a parameter, an assignment target), with the definition it sits in.
 Grammars come from tree-sitter-language-pack, which downloads one the first
 time a language is parsed; a grammar that cannot be had raises, and the index
-skips that file.
+skips that file. The index fetches the grammars a run needs first, in a child
+process it kills after FETCH_S (fetch): the pack's download has no timeout, and
+one stalled on the network held its lock with every worker waiting on it.
 """
 
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, field
 
 from .specs import SPECS, Spec
+
+FETCH_S = 120.0
+# The child's program, a constant so a test can stand in for a stalled network.
+_FETCH = "import sys, tree_sitter_language_pack as p; p.download(sys.argv[1:])"
+
+
+def fetch(langs: set[str]) -> tuple[set[str], str]:
+    """Download the grammars of ``langs`` the pack does not hold yet, in a
+    child process killed after FETCH_S, which also frees the pack's download
+    lock. Returns the languages still without a grammar and why, for the
+    caller to skip their files and say so."""
+    import tree_sitter_language_pack as pack
+
+    missing = sorted(langs - set(pack.downloaded_languages()))
+    if not missing:
+        return set(), ""
+    print(
+        f"[downloading tree-sitter grammars: {', '.join(missing)}]",
+        file=sys.stderr,
+        flush=True,
+    )
+    why = ""
+    try:
+        subprocess.run(
+            [sys.executable, "-c", _FETCH, *missing],
+            timeout=FETCH_S,
+            check=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.TimeoutExpired:
+        why = f"the download did not finish in {FETCH_S:.0f} s"
+    except subprocess.CalledProcessError as e:
+        last = (e.stderr or b"").decode(errors="replace").strip().splitlines()
+        why = last[-1] if last else f"the download exited with code {e.returncode}"
+    # What the child got before it ended, however it ended, is there to use.
+    still = set(missing) - set(pack.downloaded_languages())
+    if not still:
+        return set(), ""
+    return (
+        still,
+        f"no tree-sitter grammar for {', '.join(sorted(still))}: {why or 'not in the pack'}",
+    )
+
 
 # Extensions to the pack's language names. Languages the pack has no tags
 # query for still index, through generic_defs.
