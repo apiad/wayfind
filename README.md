@@ -1,7 +1,7 @@
 # wayfind
 
 A tree-sitter map of a git repository, for agents and for CI. It started as
-`aegis map` in [aegis](https://github.com/apiad/aegis), which now uses it as a
+`aegis map` in [aegis](https://github.com/syalia-srl/aegis), which now uses it as a
 library and mounts the same commands under that name.
 
 ## Install
